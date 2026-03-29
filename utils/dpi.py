@@ -2,19 +2,29 @@
 DPI Scaling Utility
 ===================
 Windows allows users to set display scaling (100 %, 125 %, 150 %, 200 %, …).
-PIL screenshots are captured at *logical* resolution; PyAutoGUI clicks at
-*physical* pixels.  Without correction every coordinate returned by Gemini
-will be wrong on HiDPI / scaled displays.
+The AI agent captures screenshots at physical resolution, resizes them to a
+fixed size (e.g. 1280×720) for the model, then receives coordinates back in
+that screenshot space.  PyAutoGUI click() on a DPI-aware process expects
+*physical* pixel coordinates.
+
+The correct conversion is therefore:
+
+    physical_x = gemini_x * (physical_screen_width  / screenshot_width)
+    physical_y = gemini_y * (physical_screen_height / screenshot_height)
+
+NOT the raw DPI ratio (which only equals the correct factor when the
+screenshot happens to be the same size as the logical screen).
 
 Strategy
 --------
-1. Mark the process as DPI-aware so GetSystemMetrics returns physical pixels.
-2. Compute scale = physical_width / logical_width.
-3. Multiply every Gemini-returned [x, y] by that scale before clicking.
+1. Mark the process as DPI-aware (call once, as early as possible) so that
+   all Windows API calls and PyAutoGUI return/expect physical pixels.
+2. Query the physical screen dimensions via GetSystemMetrics.
+3. Divide by the Gemini screenshot dimensions to get the true scale factors.
+4. Multiply every model-returned [x, y] by those factors before clicking.
 """
 
 import platform
-import sys
 
 # ── safe import: only Windows has ctypes.windll ───────────────────────────────
 if platform.system() == "Windows":
@@ -24,9 +34,17 @@ else:
     ctypes = None  # type: ignore
 
 
-def _get_windows_dpi_scale() -> tuple[float, float]:
-    """Return (scale_x, scale_y) for the primary monitor on Windows."""
-    # Mark process as per-monitor DPI aware so subsequent calls are accurate
+def ensure_dpi_aware() -> None:
+    """
+    Mark this process as per-monitor DPI-aware so that:
+      - GetSystemMetrics returns physical pixel dimensions.
+      - PyAutoGUI screenshots are captured at physical resolution.
+      - PyAutoGUI click coordinates are interpreted as physical pixels.
+
+    Safe to call multiple times; subsequent calls are no-ops.
+    """
+    if platform.system() != "Windows" or ctypes is None:
+        return
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
     except Exception:
@@ -35,34 +53,51 @@ def _get_windows_dpi_scale() -> tuple[float, float]:
         except Exception:
             pass
 
-    # Read the actual DPI of the primary display via GDI
-    # LOGPIXELSX = 88, LOGPIXELSY = 90 — dots-per-logical-inch reported by GDI
-    # At 100 % scaling this is 96 dpi; at 125 % → 120; at 150 % → 144; etc.
-    user32 = ctypes.windll.user32
-    gdi32  = ctypes.windll.gdi32
-    hdc    = user32.GetDC(None)
-    dpi_x: int = gdi32.GetDeviceCaps(hdc, 88)   # LOGPIXELSX
-    dpi_y: int = gdi32.GetDeviceCaps(hdc, 90)   # LOGPIXELSY
-    user32.ReleaseDC(None, hdc)
 
-    if dpi_x <= 0 or dpi_y <= 0:
+def _get_windows_dpi_scale(screenshot_w: int = 1280,
+                            screenshot_h: int = 720) -> tuple[float, float]:
+    """
+    Return (scale_x, scale_y) that maps Gemini screenshot coordinates to
+    physical screen pixels on the primary monitor.
+
+    Calls ensure_dpi_aware() first so that GetSystemMetrics returns the true
+    physical resolution rather than the scaled logical resolution.
+    """
+    ensure_dpi_aware()
+
+    # Read physical screen dimensions (SM_CXSCREEN=0, SM_CYSCREEN=1).
+    # After SetProcessDpiAwareness these return physical pixels, e.g. 1920×1080.
+    user32 = ctypes.windll.user32
+    screen_w: int = user32.GetSystemMetrics(0)  # SM_CXSCREEN
+    screen_h: int = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+
+    if screen_w <= 0 or screen_h <= 0:
         return 1.0, 1.0
 
-    # 96 DPI == 100 % scale (Windows baseline)
-    scale_x = dpi_x / 96.0
-    scale_y = dpi_y / 96.0
+    # Scale = physical screen size / Gemini screenshot size
+    # e.g. 1920/1280 = 1.5, not 1.25 (which is the DPI ratio -- a different thing)
+    scale_x = screen_w / screenshot_w
+    scale_y = screen_h / screenshot_h
     return scale_x, scale_y
 
 
-def get_dpi_scale() -> tuple[float, float]:
+def get_dpi_scale(screenshot_w: int = 1280,
+                  screenshot_h: int = 720) -> tuple[float, float]:
     """
-    Return (scale_x, scale_y).
-    On non-Windows systems, always returns (1.0, 1.0).
+    Return (scale_x, scale_y) mapping Gemini screenshot coordinates to
+    physical screen pixels.
+
+    Parameters
+    ----------
+    screenshot_w, screenshot_h : dimensions of the image sent to the model
+                                  (must match Eyes.resize_w / resize_h)
+
+    On non-Windows systems always returns (1.0, 1.0).
     """
     if platform.system() != "Windows" or ctypes is None:
         return 1.0, 1.0
     try:
-        return _get_windows_dpi_scale()
+        return _get_windows_dpi_scale(screenshot_w, screenshot_h)
     except Exception:
         return 1.0, 1.0
 
@@ -70,14 +105,14 @@ def get_dpi_scale() -> tuple[float, float]:
 def scale_point(x: float, y: float,
                 scale_x: float, scale_y: float) -> tuple[int, int]:
     """
-    Convert a logical (screenshot-space) coordinate to a physical pixel
-    coordinate suitable for PyAutoGUI.
+    Convert a screenshot-space coordinate to a physical pixel coordinate
+    suitable for PyAutoGUI.
 
     Parameters
     ----------
-    x, y    : coordinate returned by Gemini (logical pixels, screenshot space)
-    scale_x : horizontal DPI scale factor
-    scale_y : vertical DPI scale factor
+    x, y    : coordinate returned by the model (screenshot space)
+    scale_x : horizontal scale  (physical_screen_width  / screenshot_width)
+    scale_y : vertical scale    (physical_screen_height / screenshot_height)
 
     Returns
     -------

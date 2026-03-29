@@ -23,10 +23,11 @@ pyautogui.FAILSAFE = False
 
 
 class Hands:
-    def __init__(self, pause_s: float = 0.3, typing_interval: float = 0.04) -> None:
+    def __init__(self, pause_s: float = 0.3, typing_interval: float = 0.04,
+                 screenshot_w: int = 1280, screenshot_h: int = 720) -> None:
         pyautogui.PAUSE = pause_s
         self._typing_interval = typing_interval
-        self._scale_x, self._scale_y = get_dpi_scale()
+        self._scale_x, self._scale_y = get_dpi_scale(screenshot_w, screenshot_h)
         logger.info(
             "🖱  DPI scale detected: x=%.2f  y=%.2f", self._scale_x, self._scale_y
         )

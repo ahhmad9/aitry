@@ -52,6 +52,8 @@ class ReActLoop:
         self._hands   = Hands(
             pause_s=config.pyautogui_pause_s,
             typing_interval=config.typing_interval_s,
+            screenshot_w=config.screenshot_resize_w,
+            screenshot_h=config.screenshot_resize_h,
         )
         self._terminal = Terminal(
             shell=config.shell,

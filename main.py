@@ -23,8 +23,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from config import Config
 from agent.react_loop import ReActLoop
-from utils.kill_switch import KillSwitch, AgentAborted
-from utils.logger import get_logger
+from utils import KillSwitch, AgentAborted, get_logger, ensure_dpi_aware
 
 logger = get_logger("overlord")
 
@@ -67,6 +66,9 @@ async def _run(task: str) -> None:
 
 
 def main() -> None:
+    # Ensure Windows does not double-scale mouse inputs on HiDPI displays.
+    ensure_dpi_aware()
+
     _banner()
 
     # Task from CLI args or interactive prompt
