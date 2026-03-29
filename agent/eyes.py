@@ -5,6 +5,8 @@ Responsible for:
   - Capturing the full primary-monitor screenshot via PIL
   - Optionally resizing it before sending to Gemini (reduces token cost)
   - Encoding it as base64 JPEG for the Gemini vision payload
+  - Overlaying a numbered coordinate grid (Set-of-Marks) to help the AI
+    estimate precise [x, y] click positions
   - Annotating coordinates (debug overlay) for developer inspection
 """
 
@@ -13,7 +15,7 @@ import io
 import logging
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import pyautogui
 
 logger = logging.getLogger(__name__)
@@ -49,7 +51,10 @@ class Eyes:
         # Resize for Gemini (lower tokens, faster inference)
         resized = raw.resize((self.resize_w, self.resize_h), Image.LANCZOS)
 
-        b64 = self._encode_jpeg(resized, self.jpeg_quality)
+        # Overlay a numbered coordinate grid so the AI can read off precise [x, y]
+        annotated = self._draw_grid(resized)
+
+        b64 = self._encode_jpeg(annotated, self.jpeg_quality)
         logger.debug(
             "📸 Screenshot %dx%d → resized %dx%d (%.1f KB)",
             original_w, original_h,
@@ -77,6 +82,74 @@ class Eyes:
         return img
 
     # ── private ───────────────────────────────────────────────────────────────
+
+    def _draw_grid(self, image: Image.Image, step: int = 100) -> Image.Image:
+        """
+        Draw a semi-transparent numbered coordinate grid over *image*.
+
+        Lines are drawn every *step* pixels (default 100) along both axes.
+        Each intersection is labelled with its "x,y" value so the AI can read
+        off precise coordinates without having to guess.
+
+        Parameters
+        ----------
+        image : PIL Image
+            The resized screenshot to annotate (not modified in place).
+        step : int
+            Pixel interval between grid lines (default 100 px).
+        """
+        # Work on a copy so the stored ScreenCapture.image stays clean
+        img = image.copy().convert("RGBA")
+        w, h = img.size
+
+        # Create a transparent overlay for the grid lines
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        line_color = (255, 255, 255, 80)   # white, ~31 % opaque
+        text_color = (255, 255, 0, 200)    # yellow, ~78 % opaque
+        text_bg    = (0, 0, 0, 140)        # dark background behind labels
+
+        # Try common font names across platforms, fall back to PIL default
+        _font_candidates = ["arial.ttf", "Arial.ttf", "DejaVuSans.ttf",
+                             "LiberationSans-Regular.ttf"]
+        font = ImageFont.load_default()
+        for _fname in _font_candidates:
+            try:
+                font = ImageFont.truetype(_fname, 11)
+                break
+            except (OSError, IOError):
+                continue
+
+        # Grid lines start at 'step' so there is no redundant line on the
+        # image border (x=0, y=0 are just the edges of the frame).
+        x_positions = range(step, w, step)
+        y_positions = range(step, h, step)
+
+        # Draw vertical lines
+        for x in x_positions:
+            draw.line([(x, 0), (x, h)], fill=line_color, width=1)
+
+        # Draw horizontal lines
+        for y in y_positions:
+            draw.line([(0, y), (w, y)], fill=line_color, width=1)
+
+        # Label every intersection
+        for x in x_positions:
+            for y in y_positions:
+                label = f"{x},{y}"
+                bbox = draw.textbbox((x, y), label, font=font)
+                pad = 1
+                draw.rectangle(
+                    [bbox[0] - pad, bbox[1] - pad,
+                     bbox[2] + pad, bbox[3] + pad],
+                    fill=text_bg,
+                )
+                draw.text((x, y), label, fill=text_color, font=font)
+
+        # Composite the overlay onto the image
+        img = Image.alpha_composite(img, overlay)
+        return img.convert("RGB")
 
     @staticmethod
     def _encode_jpeg(image: Image.Image, quality: int) -> str:
