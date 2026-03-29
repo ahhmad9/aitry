@@ -85,6 +85,11 @@ Available actions:
   done            – task is fully complete; set is_complete: true
 
 Coordinate rules:
+- The screenshot has a semi-transparent coordinate grid overlaid on it.
+  Thin white lines are drawn every 100 pixels along both axes, and each
+  grid intersection is labelled with its "x,y" value in yellow text.
+- Use these grid markers as your primary spatial reference to determine
+  precise [x, y] coordinates for clicks and scrolls.
 - [x, y] are in the SCREENSHOT coordinate space (0..1280, 0..720).
 - Click the CENTER of target elements.
 - If unsure of coordinates, choose screenshot_only to re-examine.
