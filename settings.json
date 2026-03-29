@@ -2,7 +2,7 @@
   "screen_width": 1920,
   "screen_height": 1080,
   "screen_scale_pct": 100,
-  "max_iterations": 10,
+  "max_iterations": 30,
   "loop_delay_s": 0.0,
   "cursor_protect": true,
   "task_verify": true,
