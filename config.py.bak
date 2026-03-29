@@ -1,0 +1,46 @@
+import os
+from dataclasses import dataclass, field
+from typing import List
+
+
+@dataclass
+class Config:
+    # ─── Gemini ───────────────────────────────────────────────────────────────
+    # NOTE: "Gemini 3 Flash" isn't released yet; swap model_name when it is.
+    # Current best multimodal option for live vision tasks:
+    gemini_api_key: str = field(default_factory=lambda: os.environ.get("GEMINI_API_KEY", ""))
+    model_name: str = "gemini-2.5-flash-lite-preview-06-17"
+    max_tokens: int = 2048
+    temperature: float = 0.1                       # low = deterministic actions
+
+    # ─── ReAct Loop ───────────────────────────────────────────────────────────
+    max_iterations: int = 50                       # hard cap to prevent infinite loops
+    retry_on_fail: int = 3                         # retries per failed action
+    loop_delay_s: float = 1.0                      # pause between iterations (seconds)
+
+    # ─── Screenshot ───────────────────────────────────────────────────────────
+    screenshot_quality: int = 85                   # JPEG quality (1-95)
+    screenshot_resize_w: int = 1280                # resize before sending to Gemini
+    screenshot_resize_h: int = 720
+
+    # ─── Terminal ─────────────────────────────────────────────────────────────
+    terminal_timeout_s: int = 30                   # max seconds per shell command
+    shell: str = "powershell"                      # "powershell" | "cmd"
+
+    # ─── PyAutoGUI ────────────────────────────────────────────────────────────
+    pyautogui_pause_s: float = 0.3                 # pyautogui.PAUSE between actions
+    typing_interval_s: float = 0.04               # seconds between keystrokes
+
+    # ─── Browser (Chrome via screen control) ──────────────────────────────────
+    browser_timeout_s: int = 30          # max seconds to wait for page load
+
+    # ─── Kill Switch ──────────────────────────────────────────────────────────
+    kill_switch_corner: str = "top-left"           # move mouse here to abort
+    kill_switch_margin_px: int = 5                 # pixel margin for corner detection
+    kill_switch_poll_s: float = 0.2               # how often to check mouse position
+
+    # ─── Context / Scope ──────────────────────────────────────────────────────
+    context_paths: List[str] = field(default_factory=list)  # directories/files the agent knows about
+    context_scope: List[str] = field(default_factory=lambda: [
+        "desktop_gui", "browser", "terminal", "file_system"
+    ])  # which capabilities are enabled
