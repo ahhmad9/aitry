@@ -28,7 +28,7 @@ class Config:
     vertex_sa_key_path: str = "service_account.json"
 
     # ─── Model ────────────────────────────────────────────────────────────────
-    model_name: str = "gemini-2.5-flash"
+    model_name: str = "gemini-2.5-pro"
     max_tokens: int = 2048
     temperature: float = 0.1
 
@@ -75,7 +75,7 @@ class Config:
         s = _load_settings()
         overridable = {
             "screen_width", "screen_height", "screen_scale_pct",
-            "max_iterations", "loop_delay_s",
+            "max_iterations", "loop_delay_s", "model_name",
         }
         for key in overridable:
             if key in s:
