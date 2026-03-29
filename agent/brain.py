@@ -1,3 +1,4 @@
+import os  
 """
 Brain Module — Gemini Multimodal Reasoning Engine
 ==================================================
@@ -109,7 +110,18 @@ reason, and is_complete which are always required).
 class Brain:
     def __init__(self, api_key: str, model_name: str,
                  max_tokens: int = 2048, temperature: float = 0.1) -> None:
-        self._client = genai.Client(api_key=api_key)
+        
+
+        # Point to your service account JSON file in the root folder
+        # (Adjust the path if it's not in the exact same directory you run the script from)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "service_account.json"
+
+        # Initialize the client for Vertex AI
+        self._client = genai.Client(
+            vertexai=True,
+            project="YOUR_GOOGLE_CLOUD_PROJECT_ID",  # Replace with your actual project ID
+            location="us-central1"  # Replace with your region if different
+        )
         self._model = model_name
         self._max_tokens = max_tokens
         self._temperature = temperature
